@@ -1,9 +1,10 @@
+import struct
 from typing import get_args
 from unittest import SkipTest
 
 import av
 
-from .common import fate_suite
+from .common import fate_suite, sandboxed
 
 
 class TestProperties:
@@ -100,3 +101,82 @@ class TestPacketSideData:
 
             nxt.set_sidedata(sdata, move=True)
             assert not bool(sdata)
+
+    def test_buffer_protocol(self) -> None:
+        """Test that PacketSideData supports the buffer protocol and modification."""
+        with av.open(fate_suite("h264/extradata-reload-multi-stsd.mov")) as container:
+            for pkt in container.demux():
+                if pkt.has_sidedata("new_extradata"):
+                    sdata = pkt.get_sidedata("new_extradata")
+
+                    # Test bytes()
+                    raw = bytes(sdata)
+                    assert len(raw) == sdata.data_size
+                    assert len(raw) > 0
+
+                    # Test buffer_size and buffer_ptr properties
+                    assert sdata.buffer_size == sdata.data_size
+                    assert sdata.buffer_ptr != 0
+
+                    # Test memoryview
+                    mv = memoryview(sdata)
+                    assert len(mv) == sdata.data_size
+                    assert bytes(mv) == raw
+
+                    # Test update() modifies data
+                    modified = b"\xde\xad\xbe\xef" + raw[4:]
+                    sdata.update(modified)
+                    assert bytes(sdata)[:4] == b"\xde\xad\xbe\xef"
+
+                    # Test set_sidedata() persists to packet
+                    pkt.set_sidedata(sdata)
+                    sdata2 = pkt.get_sidedata("new_extradata")
+                    assert bytes(sdata2)[:4] == b"\xde\xad\xbe\xef"
+                    return
+
+        raise AssertionError("No packet with new_extradata side data found")
+
+    def test_skip_samples_remux(self) -> None:
+        """Test remuxing audio with skip_samples side data.
+
+        Note: The muxer may recalculate skip_start from codec delay, so we only
+        verify skip_end which represents samples to trim at the end.
+        """
+        output_path = sandboxed("skip_samples_modified.mkv")
+        new_skip_end = 888
+
+        # Read, modify skip_samples, and remux
+        with av.open(fate_suite("mkv/codec_delay_opus.mkv")) as inp:
+            audio_stream = inp.streams.audio[0]
+
+            with av.open(output_path, "w") as out:
+                out_stream = out.add_stream_from_template(audio_stream)
+
+                for pkt in inp.demux(audio_stream):
+                    if pkt.dts is None:
+                        continue
+
+                    # Modify skip_samples if present
+                    if pkt.has_sidedata("skip_samples"):
+                        sdata = pkt.get_sidedata("skip_samples")
+                        raw = bytes(sdata)
+                        # Only modify skip_end (skip_start is recalculated by muxer)
+                        new_data = raw[:4] + struct.pack("<I", new_skip_end) + raw[8:]
+                        sdata.update(new_data)
+                        pkt.set_sidedata(sdata)
+
+                    pkt.stream = out_stream
+                    out.mux(pkt)
+
+        # Verify the modification persisted
+        with av.open(output_path) as container:
+            audio = container.streams.audio[0]
+            for pkt in container.demux(audio):
+                if pkt.has_sidedata("skip_samples"):
+                    sdata = pkt.get_sidedata("skip_samples")
+                    raw = bytes(sdata)
+                    _, skip_end = struct.unpack("<II", raw[:8])
+                    assert skip_end == new_skip_end
+                    return
+
+        raise AssertionError("No packet with skip_samples side data found in output")
