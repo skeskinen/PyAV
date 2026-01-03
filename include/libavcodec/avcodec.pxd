@@ -68,6 +68,94 @@ cdef extern from "libavutil/channel_layout.h":
     AVChannel av_channel_layout_channel_from_index(AVChannelLayout *channel_layout, unsigned int idx)
 
 
+# FFCodec internal structure - needed to call decode directly and get consumed bytes
+# Based on FFmpeg's codec_internal.h (FFmpeg 7.0+)
+cdef extern from *:
+    """
+    #include <libavcodec/avcodec.h>
+
+    // cb_type values from FFmpeg's codec_internal.h (enum starts at 0)
+    #define FF_CODEC_CB_TYPE_DECODE 0
+    #define FF_CODEC_CB_TYPE_DECODE_SUB 1
+    #define FF_CODEC_CB_TYPE_RECEIVE_FRAME 2
+
+    // Internal FFCodec structure from codec_internal.h
+    // FFmpeg 7.0+ uses bitfields: caps_internal:24, is_decoder:1, color_ranges:2, alpha_modes:2, cb_type:3
+    typedef struct FFCodecDefault FFCodecDefault;
+
+    typedef struct FFCodec {
+        AVCodec p;
+        // Bitfields - total 32 bits
+        unsigned int caps_internal : 24;
+        unsigned int is_decoder : 1;
+        unsigned int color_ranges : 2;
+        unsigned int alpha_modes : 2;
+        unsigned int cb_type : 3;
+        int priv_data_size;
+        int (*update_thread_context)(struct AVCodecContext *dst,
+                                    const struct AVCodecContext *src);
+        int (*update_thread_context_for_user)(struct AVCodecContext *dst,
+                                                const struct AVCodecContext *src);
+        const FFCodecDefault *defaults;
+        int (*init)(struct AVCodecContext *);
+        union {
+            int (*decode)(struct AVCodecContext *avctx, struct AVFrame *frame,
+                        int *got_frame_ptr, struct AVPacket *avpkt);
+            int (*decode_sub)(struct AVCodecContext *avctx, struct AVSubtitle *sub,
+                            int *got_frame_ptr, struct AVPacket *avpkt);
+            int (*receive_frame)(struct AVCodecContext *avctx, struct AVFrame *frame);
+            int (*encode)(struct AVCodecContext *avctx, struct AVPacket *avpkt,
+                        const struct AVFrame *frame, int *got_packet_ptr);
+            int (*encode_sub)(struct AVCodecContext *avctx, uint8_t *buf, int buf_size,
+                            const struct AVSubtitle *sub);
+            int (*receive_packet)(struct AVCodecContext *avctx, struct AVPacket *avpkt);
+        } cb;
+    } FFCodec;
+
+    static inline const FFCodec *ffcodec(const AVCodec *codec) {
+        return (const FFCodec*)codec;
+    }
+
+    // Debug: get cb_type for inspection
+    static inline int pyav_get_cb_type(AVCodecContext *avctx) {
+        const FFCodec *c = ffcodec(avctx->codec);
+        return c->cb_type;
+    }
+
+    // Decode raw bytes and return consumed byte count
+    // Returns: consumed bytes on success, negative on error
+    // For FF_CODEC_CB_TYPE_RECEIVE_FRAME codecs, returns -1 (not supported)
+    static inline int pyav_decode_raw(AVCodecContext *avctx, AVFrame *frame,
+                                      int *got_frame, AVPacket *pkt) {
+        const FFCodec *c = ffcodec(avctx->codec);
+
+        if (c->cb_type == FF_CODEC_CB_TYPE_DECODE) {
+            return c->cb.decode(avctx, frame, got_frame, pkt);
+        } else if (c->cb_type == FF_CODEC_CB_TYPE_RECEIVE_FRAME) {
+            // receive_frame API doesn't return consumed bytes directly
+            // We need to send packet first, then receive frame
+            int ret = avcodec_send_packet(avctx, pkt);
+            if (ret < 0) {
+                *got_frame = 0;
+                return ret;
+            }
+            ret = avcodec_receive_frame(avctx, frame);
+            if (ret == 0) {
+                *got_frame = 1;
+                // For receive_frame codecs, assume entire packet was consumed
+                return pkt->size;
+            } else {
+                *got_frame = 0;
+                return ret;
+            }
+        }
+        // Return negative error with cb_type encoded
+        return -1000 - c->cb_type;
+    }
+    """
+    int pyav_decode_raw(AVCodecContext *avctx, AVFrame *frame,
+                        int *got_frame, AVPacket *pkt) nogil
+
 cdef extern from "libavcodec/avcodec.h" nogil:
     cdef set pyav_get_available_codecs()
 

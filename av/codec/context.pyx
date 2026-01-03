@@ -450,6 +450,49 @@ cdef class CodecContext:
             res.append(frame)
         return res
 
+    def decode_raw(self, bytes data, int max_size=0):
+        """Decode raw bytes and return (consumed_bytes, got_frame, nb_samples).
+
+        This directly calls FFmpeg's internal decode function, bypassing the
+        normal send/receive API. Useful for recovery scenarios where you need
+        to know exactly how many bytes were consumed.
+
+        Args:
+            data: Raw bytes to decode
+            max_size: Maximum bytes to try decoding (0 = use all data)
+
+        Returns:
+            tuple: (consumed_bytes, got_frame, nb_samples)
+                - consumed_bytes: Number of bytes consumed by decoder (can be negative on error)
+                - got_frame: 1 if a frame was decoded, 0 otherwise
+                - nb_samples: Number of samples in decoded frame (audio only)
+        """
+        if not self.codec.ptr:
+            raise ValueError("cannot decode unknown codec")
+
+        self.open(strict=False)
+
+        cdef lib.AVPacket *pkt = lib.av_packet_alloc()
+        cdef lib.AVFrame *frame = lib.av_frame_alloc()
+        cdef int got_frame = 0
+        cdef int consumed = 0
+        cdef int nb_samples = 0
+
+        try:
+            pkt.data = <uint8_t*>(<char*>data)
+            pkt.size = max_size if max_size > 0 else len(data)
+
+            with nogil:
+                consumed = lib.pyav_decode_raw(self.ptr, frame, &got_frame, pkt)
+
+            if got_frame:
+                nb_samples = frame.nb_samples
+
+            return (consumed, got_frame, nb_samples)
+        finally:
+            lib.av_frame_free(&frame)
+            lib.av_packet_free(&pkt)
+
     cpdef flush_buffers(self):
         """Reset the internal codec state and discard all internal buffers.
 
