@@ -451,7 +451,7 @@ cdef class CodecContext:
         return res
 
     def decode_raw(self, bytes data, int max_size=0):
-        """Decode raw bytes and return (consumed_bytes, got_frame, nb_samples).
+        """Decode raw bytes and return (consumed_bytes, got_frame, nb_samples, nb_channels).
 
         This directly calls FFmpeg's internal decode function, bypassing the
         normal send/receive API. Useful for recovery scenarios where you need
@@ -462,10 +462,11 @@ cdef class CodecContext:
             max_size: Maximum bytes to try decoding (0 = use all data)
 
         Returns:
-            tuple: (consumed_bytes, got_frame, nb_samples)
+            tuple: (consumed_bytes, got_frame, nb_samples, nb_channels)
                 - consumed_bytes: Number of bytes consumed by decoder (can be negative on error)
                 - got_frame: 1 if a frame was decoded, 0 otherwise
                 - nb_samples: Number of samples in decoded frame (audio only)
+                - nb_channels: Number of channels in decoded frame (audio only)
         """
         if not self.codec.ptr:
             raise ValueError("cannot decode unknown codec")
@@ -477,6 +478,7 @@ cdef class CodecContext:
         cdef int got_frame = 0
         cdef int consumed = 0
         cdef int nb_samples = 0
+        cdef int nb_channels = 0
 
         try:
             pkt.data = <uint8_t*>(<char*>data)
@@ -487,8 +489,9 @@ cdef class CodecContext:
 
             if got_frame:
                 nb_samples = frame.nb_samples
+                nb_channels = frame.ch_layout.nb_channels
 
-            return (consumed, got_frame, nb_samples)
+            return (consumed, got_frame, nb_samples, nb_channels)
         finally:
             lib.av_frame_free(&frame)
             lib.av_packet_free(&pkt)
