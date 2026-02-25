@@ -327,6 +327,51 @@ cdef class VideoCodecContext(CodecContext):
         self.ptr.colorspace = value
 
     @property
+    def chroma_sample_location(self):
+        """
+        Chroma sample position within the luma sample grid.
+
+        Wraps :ffmpeg:`AVCodecContext.chroma_sample_location`.
+
+        :type: int
+        """
+        return self.ptr.chroma_sample_location
+
+    @chroma_sample_location.setter
+    def chroma_sample_location(self, value):
+        self.ptr.chroma_sample_location = value
+
+    @property
+    def level(self):
+        """
+        Encoding level (e.g. 31 for H.264 Level 3.1, 40 for Level 4.0).
+
+        Wraps :ffmpeg:`AVCodecContext.level`.
+
+        :type: int
+        """
+        return self.ptr.level
+
+    @level.setter
+    def level(self, int value):
+        self.ptr.level = value
+
+    @property
+    def bits_per_raw_sample(self):
+        """
+        Bits per sample/pixel of internal libavcodec pixel/sample format.
+
+        Wraps :ffmpeg:`AVCodecContext.bits_per_raw_sample`.
+
+        :type: int
+        """
+        return self.ptr.bits_per_raw_sample
+
+    @bits_per_raw_sample.setter
+    def bits_per_raw_sample(self, int value):
+        self.ptr.bits_per_raw_sample = value
+
+    @property
     def max_b_frames(self):
         """
         The maximum run of consecutive B frames when encoding a video.

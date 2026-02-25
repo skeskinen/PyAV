@@ -408,6 +408,9 @@ cdef extern from "libavcodec/avcodec.h" nogil:
         AVColorPrimaries color_primaries
         AVColorTransferCharacteristic color_trc
         AVColorSpace colorspace
+        int chroma_sample_location
+        int level
+        int bits_per_raw_sample
 
         # Audio.
         AVSampleFormat sample_fmt

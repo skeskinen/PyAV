@@ -26,6 +26,9 @@ class VideoCodecContext(CodecContext):
     color_primaries: int
     color_trc: int
     colorspace: int
+    chroma_sample_location: int
+    level: int
+    bits_per_raw_sample: int
     qmin: int
     qmax: int
     type: Literal["video"]
