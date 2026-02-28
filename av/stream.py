@@ -134,6 +134,12 @@ class Stream:
         if name == "time_base":
             to_avrational(value, cython.address(self.ptr.time_base))
             return
+        if name == "average_rate":
+            to_avrational(value, cython.address(self.ptr.avg_frame_rate))
+            return
+        if name == "base_rate":
+            to_avrational(value, cython.address(self.ptr.r_frame_rate))
+            return
 
         # Convenience setter for codec context properties.
         if self.codec_context is not None:
