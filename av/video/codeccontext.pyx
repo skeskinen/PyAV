@@ -253,6 +253,20 @@ cdef class VideoCodecContext(CodecContext):
         return bool(self.ptr.has_b_frames)
 
     @property
+    def reorder_depth(self):
+        """Raw ``has_b_frames`` value from FFmpeg (int, not bool).
+
+        After :meth:`flush_buffers`, FFmpeg may reset the internal reorder
+        heuristic.  Set this to the known reorder depth *after* seeking to
+        avoid dropped hierarchical B-frames.
+        """
+        return self.ptr.has_b_frames
+
+    @reorder_depth.setter
+    def reorder_depth(self, int value):
+        self.ptr.has_b_frames = value
+
+    @property
     def coded_width(self):
         """
         :type: int
