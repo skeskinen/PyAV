@@ -12,6 +12,8 @@ cdef extern from "libavutil/samplefmt.h" nogil:
         AV_SAMPLE_FMT_S32P
         AV_SAMPLE_FMT_FLTP
         AV_SAMPLE_FMT_DBLP
+        AV_SAMPLE_FMT_S64
+        AV_SAMPLE_FMT_S64P
         AV_SAMPLE_FMT_NB  # Number.
 
     # Find by name.
