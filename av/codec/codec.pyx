@@ -164,7 +164,8 @@ cdef class Codec:
         E.g: ``'audio'``, ``'video'``, ``'subtitle'``.
 
         """
-        return lib.av_get_media_type_string(self.ptr.type)
+        media_type = lib.av_get_media_type_string(self.ptr.type)
+        return "unknown" if media_type == NULL else media_type
 
     @property
     def id(self): return self.ptr.id
@@ -234,9 +235,8 @@ cdef class Codec:
                 break
             ret.append(wrap_hwconfig(ptr))
             i += 1
-        ret = tuple(ret)
-        self._hardware_configs = ret
-        return ret
+        self._hardware_configs = tuple(ret)
+        return self._hardware_configs
 
     @property
     def properties(self):
