@@ -40,4 +40,5 @@ class VideoStream(Stream):
     color_primaries: int
     color_trc: int
     colorspace: int
+    rotation: int
     type: Literal["video"]

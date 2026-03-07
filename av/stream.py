@@ -10,6 +10,7 @@ from cython.cimports.av.utils import (
     dict_to_avdict,
     to_avrational,
 )
+from cython.cimports.libc.string import memcpy
 
 
 class Disposition(Flag):
@@ -166,6 +167,33 @@ class Stream:
                 self.ptr.codecpar, self.codec_context.ptr
             )
         )
+
+    def copy_coded_side_data(self, template: Stream):
+        """Copy coded_side_data from a template stream's codecpar to this stream's codec context.
+
+        Used to preserve display matrix (rotation) and other side data when
+        creating output streams via add_stream() (which doesn't copy side data
+        from any template).  The data is written to the codec context so that
+        _finalize_for_output() propagates it to codecpar automatically.
+        """
+        src_par: cython.pointer[lib.AVCodecParameters] = template.ptr.codecpar
+        if src_par.nb_coded_side_data <= 0:
+            return
+        if self.codec_context is None:
+            return
+        ctx: cython.pointer[lib.AVCodecContext] = self.codec_context.ptr
+        i: cython.int
+        for i in range(src_par.nb_coded_side_data):
+            sd: cython.pointer[lib.AVPacketSideData] = cython.address(src_par.coded_side_data[i])
+            new_sd: cython.pointer[lib.AVPacketSideData] = lib.av_packet_side_data_new(
+                cython.address(ctx.coded_side_data),
+                cython.address(ctx.nb_coded_side_data),
+                sd.type,
+                sd.size,
+                0,
+            )
+            if new_sd != cython.NULL:
+                memcpy(new_sd.data, sd.data, sd.size)
 
     @property
     def id(self):

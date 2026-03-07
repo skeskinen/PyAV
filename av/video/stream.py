@@ -3,6 +3,7 @@ from cython.cimports import libav as lib
 from cython.cimports.av.packet import Packet
 from cython.cimports.av.utils import avrational_to_fraction, to_avrational
 from cython.cimports.av.video.frame import VideoFrame
+from cython.cimports.libc.stdint import int32_t
 
 
 @cython.cclass
@@ -121,3 +122,22 @@ class VideoStream(Stream):
         )
 
         return avrational_to_fraction(cython.address(dar))
+
+    @property
+    def rotation(self):
+        """The rotation from the DISPLAYMATRIX in coded_side_data (degrees, counterclockwise).
+
+        Reads the display matrix directly from the stream's codec parameters
+        without requiring frame decoding.  Returns 0 if no display matrix is present.
+
+        :type: int
+        """
+        par: cython.pointer[lib.AVCodecParameters] = self.ptr.codecpar
+        i: cython.int
+        for i in range(par.nb_coded_side_data):
+            if par.coded_side_data[i].type == lib.AV_PKT_DATA_DISPLAYMATRIX:
+                angle: cython.double = lib.av_display_rotation_get(
+                    cython.cast(cython.pointer[cython.const[int32_t]], par.coded_side_data[i].data)
+                )
+                return int(angle)
+        return 0

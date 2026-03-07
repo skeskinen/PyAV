@@ -401,6 +401,9 @@ cdef extern from "libavcodec/avcodec.h" nogil:
         AVPixelFormat pix_fmt
         AVPixelFormat sw_pix_fmt
         AVRational sample_aspect_ratio
+
+        AVPacketSideData *coded_side_data
+        int nb_coded_side_data
         int gop_size  # The number of pictures in a group of pictures, or 0 for intra_only.
         int max_b_frames
         int has_b_frames
