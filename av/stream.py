@@ -168,6 +168,12 @@ class Stream:
             )
         )
 
+        # Sync codecpar SAR to AVStream SAR.  The ffmpeg CLI does this in
+        # ffmpeg_mux_init.c but PyAV never did, causing the MKV muxer to
+        # write a bogus DisplayUnit=4 (UNKNOWN) when st->sample_aspect_ratio
+        # is left at {0,0} while codecpar has a valid SAR.
+        self.ptr.sample_aspect_ratio = self.ptr.codecpar.sample_aspect_ratio
+
     def copy_coded_side_data(self, template: Stream):
         """Copy coded_side_data from a template stream's codecpar to this stream's codec context.
 

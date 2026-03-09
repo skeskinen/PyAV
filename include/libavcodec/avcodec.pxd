@@ -700,6 +700,7 @@ cdef extern from "libavcodec/avcodec.h" nogil:
         int nb_coded_side_data
         uint8_t *extradata
         int extradata_size
+        AVRational sample_aspect_ratio
 
     cdef int avcodec_parameters_copy(
         AVCodecParameters *dst,
