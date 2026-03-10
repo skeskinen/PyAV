@@ -22,6 +22,7 @@ next
 
 Features:
 
+- Add ``OutputContainer.add_mux_stream()`` for creating codec-context-free streams, enabling muxing of pre-encoded packets without an encoder, addressing :issue:`1970` by :gh-user:`WyattBlue`.
 - Add AMD AMF hardware decoding by :gh-user:`ladaapp2`.
 - Add subtitle encoding support by :gh-user:`skeskinen` in (:pr:`2050`).
 - Add read/write access to PacketSideData by :gh-user:`skeskinen` in (:pr:`2051`).
