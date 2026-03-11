@@ -50,4 +50,5 @@ class VideoReformatter:
         interpolation: int | str | None = None,
         src_color_range: int | str | None = None,
         dst_color_range: int | str | None = None,
+        threads: int | None = None,
     ) -> VideoFrame: ...

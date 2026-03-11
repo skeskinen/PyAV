@@ -91,7 +91,7 @@ cdef class VideoReformatter:
     def reformat(self, VideoFrame frame not None, width=None, height=None,
                  format=None, src_colorspace=None, dst_colorspace=None,
                  interpolation=None, src_color_range=None,
-                 dst_color_range=None):
+                 dst_color_range=None, threads=None):
         """Create a new :class:`VideoFrame` with the given width/height/format/colorspace.
 
         Returns the same frame untouched if nothing needs to be done to it.
@@ -120,6 +120,7 @@ cdef class VideoReformatter:
         cdef int c_interpolation = _resolve_enum_value(interpolation, Interpolation, int(Interpolation.BILINEAR))
         cdef int c_src_color_range = _resolve_enum_value(src_color_range, ColorRange, 0)
         cdef int c_dst_color_range = _resolve_enum_value(dst_color_range, ColorRange, 0)
+        cdef int c_threads = threads if threads is not None else 0
 
         return self._reformat(
             frame,
@@ -131,12 +132,14 @@ cdef class VideoReformatter:
             c_interpolation,
             c_src_color_range,
             c_dst_color_range,
+            c_threads,
         )
 
     cdef _reformat(self, VideoFrame frame, int width, int height,
                    lib.AVPixelFormat dst_format, int src_colorspace,
                    int dst_colorspace, int interpolation,
-                   int src_color_range, int dst_color_range):
+                   int src_color_range, int dst_color_range,
+                   int threads):
 
         if frame.ptr.format < 0:
             raise ValueError("Frame does not have format set.")
@@ -157,7 +160,7 @@ cdef class VideoReformatter:
             self.ptr = sws_alloc_context()
             if self.ptr == NULL:
                 raise MemoryError("Could not allocate SwsContext")
-            self.ptr.threads = 1
+        self.ptr.threads = threads
         self.ptr.flags = <unsigned int>interpolation
 
         # Create a new VideoFrame.

@@ -79,7 +79,11 @@ cdef class VideoCodecContext(CodecContext):
                 self.reformatter = VideoReformatter()
 
             vframe = self.reformatter.reformat(
-                vframe, self.ptr.width, self.ptr.height, self._format
+                vframe,
+                self.ptr.width,
+                self.ptr.height,
+                self._format,
+                threads=self.ptr.thread_count,
             )
 
         # There is no pts, so create one.
