@@ -18,8 +18,8 @@ class Interpolation(IntEnum):
     BICUBLIN: "Luma bicubic / chroma bilinear" = SWS_BICUBLIN
     GAUSS: "Gaussian" = SWS_GAUSS
     SINC: "Sinc" = SWS_SINC
-    LANCZOS: "Bicubic spline" = SWS_LANCZOS
-    SPLINE: "Bicubic spline" = SWS_SPLINE
+    LANCZOS: "3-tap sinc/sinc" = SWS_LANCZOS
+    SPLINE: "Cubic Keys spline" = SWS_SPLINE
 
 
 class Colorspace(IntEnum):
