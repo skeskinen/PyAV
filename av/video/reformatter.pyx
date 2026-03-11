@@ -46,21 +46,22 @@ class ColorRange(IntEnum):
     NB: "Not part of ABI" = lib.AVCOL_RANGE_NB
 
 
-# Mapping from SWS_CS_* (swscale colorspace) to AVColorSpace (frame metadata).
-cdef dict _SWS_CS_TO_AVCOL_SPC = {
-    SWS_CS_ITU709: lib.AVCOL_SPC_BT709,
-    SWS_CS_FCC: lib.AVCOL_SPC_FCC,
-    SWS_CS_ITU601: lib.AVCOL_SPC_SMPTE170M,
-    SWS_CS_SMPTE240M: lib.AVCOL_SPC_SMPTE240M,
-}
-
-
-cdef void _set_frame_colorspace(VideoFrame frame, int colorspace, int color_range):
+cdef void _set_frame_colorspace(lib.AVFrame *frame, int colorspace, int color_range):
     """Set AVFrame colorspace/range from SWS_CS_* and AVColorRange values."""
-    if colorspace in _SWS_CS_TO_AVCOL_SPC:
-        frame.ptr.colorspace = <lib.AVColorSpace>_SWS_CS_TO_AVCOL_SPC[colorspace]
     if color_range != lib.AVCOL_RANGE_UNSPECIFIED:
-        frame.ptr.color_range = <lib.AVColorRange>color_range
+        frame.color_range = <lib.AVColorRange>color_range
+    # Mapping from SWS_CS_* (swscale colorspace) to AVColorSpace (frame metadata).
+    # Note: SWS_CS_ITU601, SWS_CS_ITU624, SWS_CS_SMPTE170M, and SWS_CS_DEFAULT all have
+    # the same value (5), so we map 5 -> AVCOL_SPC_SMPTE170M as the most common case.
+    # SWS_CS_DEFAULT is handled specially by not setting frame metadata.
+    if colorspace == SWS_CS_ITU709:
+        frame.colorspace = lib.AVCOL_SPC_BT709
+    elif colorspace == SWS_CS_FCC:
+        frame.colorspace = lib.AVCOL_SPC_FCC
+    elif colorspace == SWS_CS_ITU601:
+        frame.colorspace = lib.AVCOL_SPC_SMPTE170M
+    elif colorspace == SWS_CS_SMPTE240M:
+        frame.colorspace = lib.AVCOL_SPC_SMPTE240M
 
 
 def _resolve_enum_value(value, enum_class, default):
@@ -171,8 +172,8 @@ cdef class VideoReformatter:
         # Set source frame colorspace/range so sws_scale_frame can read it
         cdef lib.AVColorSpace frame_src_colorspace = frame.ptr.colorspace
         cdef lib.AVColorRange frame_src_color_range = frame.ptr.color_range
-        _set_frame_colorspace(frame, src_colorspace, src_color_range)
-        _set_frame_colorspace(new_frame, dst_colorspace, dst_color_range)
+        _set_frame_colorspace(frame.ptr, src_colorspace, src_color_range)
+        _set_frame_colorspace(new_frame.ptr, dst_colorspace, dst_color_range)
 
         cdef int ret
         with nogil:
