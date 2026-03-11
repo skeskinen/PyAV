@@ -2,7 +2,7 @@ cimport libav as lib
 from libc.stdint cimport uint8_t
 
 from av.error cimport err_check
-from av.video.format cimport VideoFormat
+from av.video.format cimport VideoFormat, get_pix_fmt
 from av.video.frame cimport alloc_video_frame
 
 from enum import IntEnum
@@ -77,6 +77,14 @@ def _resolve_enum_value(value, enum_class, default):
     raise ValueError(f"Cannot convert {value} to {enum_class.__name__}")
 
 
+cdef lib.AVPixelFormat _resolve_format(object format, lib.AVPixelFormat default):
+    if format is None:
+        return default
+    if isinstance(format, VideoFormat):
+        return (<VideoFormat>format).pix_fmt
+    return get_pix_fmt(format)
+
+
 cdef class VideoReformatter:
     """An object for reformatting size and pixel format of :class:`.VideoFrame`.
 
@@ -114,20 +122,21 @@ cdef class VideoReformatter:
 
         """
 
-        cdef VideoFormat video_format = VideoFormat(format if format is not None else frame.format)
-
-        cdef int c_src_colorspace = _resolve_enum_value(src_colorspace, Colorspace, frame.colorspace)
-        cdef int c_dst_colorspace = _resolve_enum_value(dst_colorspace, Colorspace, frame.colorspace)
-        cdef int c_interpolation = _resolve_enum_value(interpolation, Interpolation, int(Interpolation.BILINEAR))
+        cdef lib.AVPixelFormat c_dst_format = _resolve_format(format, frame.format.pix_fmt)
+        cdef int c_src_colorspace = _resolve_enum_value(src_colorspace, Colorspace, frame.ptr.colorspace)
+        cdef int c_dst_colorspace = _resolve_enum_value(dst_colorspace, Colorspace, frame.ptr.colorspace)
+        cdef int c_interpolation = _resolve_enum_value(interpolation, Interpolation, SWS_BILINEAR)
         cdef int c_src_color_range = _resolve_enum_value(src_color_range, ColorRange, 0)
         cdef int c_dst_color_range = _resolve_enum_value(dst_color_range, ColorRange, 0)
         cdef int c_threads = threads if threads is not None else 0
+        cdef int c_width = width if width is not None else frame.ptr.width
+        cdef int c_height = height if height is not None else frame.ptr.height
 
         return self._reformat(
             frame,
-            width or frame.ptr.width,
-            height or frame.ptr.height,
-            video_format.pix_fmt,
+            c_width,
+            c_height,
+            c_dst_format,
             c_src_colorspace,
             c_dst_colorspace,
             c_interpolation,
