@@ -302,7 +302,7 @@ class VideoFrame(Frame):
             self.ptr.height = height
             self.ptr.format = format
 
-            # We enforce aligned buffers, otherwise `sws_scale` can perform
+            # We enforce aligned buffers, otherwise `sws_scale_frame` can perform
             # poorly or even cause out-of-bounds reads and writes.
             if width and height:
                 res = lib.av_image_alloc(

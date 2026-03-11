@@ -9,40 +9,58 @@ from enum import IntEnum
 
 
 class Interpolation(IntEnum):
-    FAST_BILINEAR: "Fast bilinear" = lib.SWS_FAST_BILINEAR
-    BILINEAR: "Bilinear" = lib.SWS_BILINEAR
-    BICUBIC: "Bicubic" = lib.SWS_BICUBIC
-    X: "Experimental" = lib.SWS_X
-    POINT: "Nearest neighbor / point" = lib.SWS_POINT
-    AREA: "Area averaging" = lib.SWS_AREA
-    BICUBLIN: "Luma bicubic / chroma bilinear" = lib.SWS_BICUBLIN
-    GAUSS: "Gaussian" = lib.SWS_GAUSS
-    SINC: "Sinc" = lib.SWS_SINC
-    LANCZOS: "Bicubic spline" = lib.SWS_LANCZOS
+    FAST_BILINEAR: "Fast bilinear" = SWS_FAST_BILINEAR
+    BILINEAR: "Bilinear" = SWS_BILINEAR
+    BICUBIC: "Bicubic" = SWS_BICUBIC
+    X: "Experimental" = SWS_X
+    POINT: "Nearest neighbor / point" = SWS_POINT
+    AREA: "Area averaging" = SWS_AREA
+    BICUBLIN: "Luma bicubic / chroma bilinear" = SWS_BICUBLIN
+    GAUSS: "Gaussian" = SWS_GAUSS
+    SINC: "Sinc" = SWS_SINC
+    LANCZOS: "Bicubic spline" = SWS_LANCZOS
+    SPLINE: "Bicubic spline" = SWS_SPLINE
 
 
 class Colorspace(IntEnum):
-    ITU709 = lib.SWS_CS_ITU709
-    FCC = lib.SWS_CS_FCC
-    ITU601 = lib.SWS_CS_ITU601
-    ITU624 = lib.SWS_CS_ITU624
-    SMPTE170M = lib.SWS_CS_SMPTE170M
-    SMPTE240M = lib.SWS_CS_SMPTE240M
-    DEFAULT = lib.SWS_CS_DEFAULT
+    ITU709 = SWS_CS_ITU709
+    FCC = SWS_CS_FCC
+    ITU601 = SWS_CS_ITU601
+    ITU624 = SWS_CS_ITU624
+    SMPTE170M = SWS_CS_SMPTE170M
+    SMPTE240M = SWS_CS_SMPTE240M
+    DEFAULT = SWS_CS_DEFAULT
     # Lowercase for b/c.
-    itu709 = lib.SWS_CS_ITU709
-    fcc = lib.SWS_CS_FCC
-    itu601 = lib.SWS_CS_ITU601
-    itu624 = lib.SWS_CS_ITU624
-    smpte170m = lib.SWS_CS_SMPTE170M
-    smpte240m = lib.SWS_CS_SMPTE240M
-    default = lib.SWS_CS_DEFAULT
+    itu709 = SWS_CS_ITU709
+    fcc = SWS_CS_FCC
+    itu601 = SWS_CS_ITU601
+    itu624 = SWS_CS_ITU624
+    smpte170m = SWS_CS_SMPTE170M
+    smpte240m = SWS_CS_SMPTE240M
+    default = SWS_CS_DEFAULT
 
 class ColorRange(IntEnum):
     UNSPECIFIED: "Unspecified" = lib.AVCOL_RANGE_UNSPECIFIED
     MPEG: "MPEG (limited) YUV range, 219*2^(n-8)" = lib.AVCOL_RANGE_MPEG
     JPEG: "JPEG (full) YUV range, 2^n-1" = lib.AVCOL_RANGE_JPEG
     NB: "Not part of ABI" = lib.AVCOL_RANGE_NB
+
+
+# Mapping from SWS_CS_* (swscale colorspace) to AVColorSpace (frame metadata).
+cdef dict _SWS_CS_TO_AVCOL_SPC = {
+    SWS_CS_ITU709: lib.AVCOL_SPC_BT709,
+    SWS_CS_FCC: lib.AVCOL_SPC_FCC,
+    SWS_CS_ITU601: lib.AVCOL_SPC_SMPTE170M,
+    SWS_CS_SMPTE240M: lib.AVCOL_SPC_SMPTE240M,
+}
+
+
+cdef void _set_frame_colorspace(VideoFrame frame, int colorspace, int color_range):
+    """Set AVFrame colorspace/range from SWS_CS_* and AVColorRange values."""
+    if colorspace in _SWS_CS_TO_AVCOL_SPC:
+        frame.ptr.colorspace = <lib.AVColorSpace>_SWS_CS_TO_AVCOL_SPC[colorspace]
+    if color_range != lib.AVCOL_RANGE_UNSPECIFIED:
+        frame.ptr.color_range = <lib.AVColorRange>color_range
 
 
 def _resolve_enum_value(value, enum_class, default):
@@ -68,7 +86,7 @@ cdef class VideoReformatter:
 
     def __dealloc__(self):
         with nogil:
-            lib.sws_freeContext(self.ptr)
+            sws_free_context(&self.ptr)
 
     def reformat(self, VideoFrame frame not None, width=None, height=None,
                  format=None, src_colorspace=None, dst_colorspace=None,
@@ -123,10 +141,6 @@ cdef class VideoReformatter:
         if frame.ptr.format < 0:
             raise ValueError("Frame does not have format set.")
 
-        # The definition of color range in pixfmt.h and swscale.h is different.
-        src_color_range = 1 if src_color_range == ColorRange.JPEG.value else 0
-        dst_color_range = 1 if dst_color_range == ColorRange.JPEG.value else 0
-
         cdef lib.AVPixelFormat src_format = <lib.AVPixelFormat> frame.ptr.format
 
         # Shortcut!
@@ -139,84 +153,32 @@ cdef class VideoReformatter:
         ):
             return frame
 
-        with nogil:
-            self.ptr = lib.sws_getCachedContext(
-                self.ptr,
-                frame.ptr.width,
-                frame.ptr.height,
-                src_format,
-                width,
-                height,
-                dst_format,
-                interpolation,
-                NULL,
-                NULL,
-                NULL
-            )
-
-        # We want to change the colorspace/color_range transforms.
-        # We do that by grabbing all of the current settings, changing a
-        # couple, and setting them all. We need a lot of state here.
-        cdef const int *inv_tbl
-        cdef const int *tbl
-        cdef int src_colorspace_range, dst_colorspace_range
-        cdef int brightness, contrast, saturation
-        cdef int ret
-
-        if src_colorspace != dst_colorspace or src_color_range != dst_color_range:
-            with nogil:
-                # Casts for const-ness, because Cython isn't expressive enough.
-                ret = lib.sws_getColorspaceDetails(
-                    self.ptr,
-                    <int**>&inv_tbl,
-                    &src_colorspace_range,
-                    <int**>&tbl,
-                    &dst_colorspace_range,
-                    &brightness,
-                    &contrast,
-                    &saturation
-                )
-
-            err_check(ret)
-
-            with nogil:
-                # Grab the coefficients for the requested transforms.
-                # The inv_table brings us to linear, and `tbl` to the new space.
-                if src_colorspace != lib.SWS_CS_DEFAULT:
-                    inv_tbl = lib.sws_getCoefficients(src_colorspace)
-                if dst_colorspace != lib.SWS_CS_DEFAULT:
-                    tbl = lib.sws_getCoefficients(dst_colorspace)
-
-                # Apply!
-                ret = lib.sws_setColorspaceDetails(
-                    self.ptr,
-                    inv_tbl,
-                    src_color_range,
-                    tbl,
-                    dst_color_range,
-                    brightness,
-                    contrast,
-                    saturation
-                )
-
-            err_check(ret)
+        if self.ptr == NULL:
+            self.ptr = sws_alloc_context()
+            if self.ptr == NULL:
+                raise MemoryError("Could not allocate SwsContext")
+            self.ptr.threads = 1
+        self.ptr.flags = <unsigned int>interpolation
 
         # Create a new VideoFrame.
         cdef VideoFrame new_frame = alloc_video_frame()
         new_frame._copy_internal_attributes(frame)
         new_frame._init(dst_format, width, height)
 
-        # Finally, scale the image.
+        # Set source frame colorspace/range so sws_scale_frame can read it
+        cdef lib.AVColorSpace frame_src_colorspace = frame.ptr.colorspace
+        cdef lib.AVColorRange frame_src_color_range = frame.ptr.color_range
+        _set_frame_colorspace(frame, src_colorspace, src_color_range)
+        _set_frame_colorspace(new_frame, dst_colorspace, dst_color_range)
+
+        cdef int ret
         with nogil:
-            lib.sws_scale(
-                self.ptr,
-                # Cast for const-ness, because Cython isn't expressive enough.
-                <const uint8_t**>frame.ptr.data,
-                frame.ptr.linesize,
-                0,  # slice Y
-                frame.ptr.height,
-                new_frame.ptr.data,
-                new_frame.ptr.linesize,
-            )
+            ret = sws_scale_frame(self.ptr, new_frame.ptr, frame.ptr)
+
+        # Restore source frame colorspace/range to avoid side effects
+        frame.ptr.colorspace = frame_src_colorspace
+        frame.ptr.color_range = frame_src_color_range
+
+        err_check(ret)
 
         return new_frame
