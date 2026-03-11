@@ -60,14 +60,6 @@ class OutputContainer(Container):
         codec_obj: Codec = Codec(codec_name, "w")
         codec: cython.pointer[cython.const[lib.AVCodec]] = codec_obj.ptr
 
-        # Assert that this format supports the requested codec.
-        if not lib.avformat_query_codec(
-            self.ptr.oformat, codec.id, lib.FF_COMPLIANCE_NORMAL
-        ):
-            raise ValueError(
-                f"{self.format.name!r} format does not support {codec_obj.name!r} codec"
-            )
-
         # Create new stream in the AVFormatContext, set AVCodecContext values.
         stream: cython.pointer[lib.AVStream] = lib.avformat_new_stream(self.ptr, codec)
         ctx: cython.pointer[lib.AVCodecContext] = lib.avcodec_alloc_context3(codec)
@@ -154,14 +146,6 @@ class OutputContainer(Container):
             codec_obj = Codec(template.codec_context.codec.name, "w")
 
         codec: cython.pointer[cython.const[lib.AVCodec]] = codec_obj.ptr
-
-        # Assert that this format supports the requested codec.
-        if not lib.avformat_query_codec(
-            self.ptr.oformat, codec.id, lib.FF_COMPLIANCE_NORMAL
-        ):
-            raise ValueError(
-                f"{self.format.name!r} format does not support {codec_obj.name!r} codec"
-            )
 
         # Create new stream in the AVFormatContext, set AVCodecContext values.
         stream: cython.pointer[lib.AVStream] = lib.avformat_new_stream(self.ptr, codec)
