@@ -21,4 +21,10 @@ cdef extern from "libavutil/hwcontext.h" nogil:
     cdef const char *av_hwdevice_get_type_name(AVHWDeviceType type)
     cdef AVHWDeviceType av_hwdevice_iterate_types(AVHWDeviceType prev)
 
+    cdef struct AVHWFramesContext:
+        AVPixelFormat format
+        AVPixelFormat sw_format
+        int width
+        int height
+
     cdef int av_hwframe_transfer_data(AVFrame *dst, const AVFrame *src, int flags)

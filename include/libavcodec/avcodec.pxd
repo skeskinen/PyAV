@@ -574,6 +574,8 @@ cdef extern from "libavcodec/avcodec.h" nogil:
 
         int64_t duration
 
+        AVBufferRef *hw_frames_ctx
+
     cdef AVFrame* avcodec_alloc_frame()
 
     cdef struct AVPacket:
