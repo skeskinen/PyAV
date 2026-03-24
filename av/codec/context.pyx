@@ -1,6 +1,7 @@
 cimport libav as lib
 from libc.errno cimport EAGAIN
 from libc.stdint cimport uint8_t
+from libc.stdlib cimport free, malloc, realloc
 from libc.string cimport memcpy
 
 from av.bytesource cimport ByteSource, bytesource
@@ -449,6 +450,112 @@ cdef class CodecContext:
                 self._setup_decoded_frame(frame, packet)
             res.append(frame)
         return res
+
+    cpdef decode_large_nogil(self, Packet packet=None):
+        """Decoder path with one large nogil region.
+
+        Keeps send_packet + receive_frame* inside a single nogil block and
+        only wraps AVFrames into Python Frame objects after the native decode
+        loop completes.
+        """
+        cdef int res = 0
+        cdef int frame_count = 0
+        cdef int capacity = 8
+        cdef lib.AVFrame **raw_frames
+        cdef lib.AVFrame *raw = NULL
+        cdef Frame frame
+        cdef Frame wrapped
+        cdef int i
+
+        if not self.codec.ptr:
+            raise ValueError("cannot decode unknown codec")
+
+        self.open(strict=False)
+
+        raw_frames = <lib.AVFrame**>malloc(capacity * sizeof(lib.AVFrame*))
+        if raw_frames == NULL:
+            raise MemoryError()
+
+        try:
+            with nogil:
+                res = lib.avcodec_send_packet(self.ptr, packet.ptr if packet is not None else NULL)
+                if res >= 0:
+                    while True:
+                        raw = lib.av_frame_alloc()
+                        if raw == NULL:
+                            res = lib.AVERROR_NOMEM
+                            break
+                        res = lib.avcodec_receive_frame(self.ptr, raw)
+                        if res == -EAGAIN or res == lib.AVERROR_EOF:
+                            lib.av_frame_free(&raw)
+                            res = 0
+                            break
+                        if res < 0:
+                            lib.av_frame_free(&raw)
+                            break
+                        if frame_count == capacity:
+                            capacity *= 2
+                            raw_frames = <lib.AVFrame**>realloc(raw_frames, capacity * sizeof(lib.AVFrame*))
+                            if raw_frames == NULL:
+                                res = lib.AVERROR_NOMEM
+                                break
+                        raw_frames[frame_count] = raw
+                        raw = NULL
+                        frame_count += 1
+
+            err_check(res, "decode_large_nogil()")
+
+            out = []
+            for i in range(frame_count):
+                frame = self._alloc_next_frame()
+                lib.av_frame_free(&frame.ptr)
+                frame.ptr = raw_frames[i]
+                raw_frames[i] = NULL
+                wrapped = self._transfer_hwframe(frame)
+                if isinstance(wrapped, Frame):
+                    self._setup_decoded_frame(wrapped, packet)
+                out.append(wrapped)
+            return out
+        finally:
+            if raw != NULL:
+                lib.av_frame_free(&raw)
+            if raw_frames != NULL:
+                for i in range(frame_count):
+                    if raw_frames[i] != NULL:
+                        lib.av_frame_free(&raw_frames[i])
+                free(raw_frames)
+
+    def send_packet_nogil(self, Packet packet=None):
+        """Send a packet to the decoder (nogil). Returns 0 on success, negative on error."""
+        cdef int res
+        if not self.codec.ptr:
+            raise ValueError("cannot decode unknown codec")
+        self.open(strict=False)
+        with nogil:
+            res = lib.avcodec_send_packet(self.ptr, packet.ptr if packet is not None else NULL)
+        return res
+
+    def receive_frame_nogil(self):
+        """Receive one decoded frame (nogil). Returns Frame or None if EAGAIN/EOF."""
+        cdef int res
+        cdef Frame frame
+
+        if not self._next_frame:
+            self._next_frame = self._alloc_next_frame()
+        frame = self._next_frame
+
+        with nogil:
+            res = lib.avcodec_receive_frame(self.ptr, frame.ptr)
+
+        if res == -EAGAIN or res == lib.AVERROR_EOF:
+            return None
+        err_check(res, "receive_frame_nogil()")
+
+        frame = self._transfer_hwframe(frame)
+        if not res:
+            self._next_frame = None
+            self._setup_decoded_frame(frame, None)
+            return frame
 
     def decode_raw(self, bytes data, int max_size=0):
         """Decode raw bytes and return (consumed_bytes, got_frame, nb_samples, nb_channels).

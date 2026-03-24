@@ -35,6 +35,7 @@ cdef class CodecContext:
     # Wraps both versions of the transcode API, returning lists.
     cpdef encode(self, Frame frame=?)
     cpdef decode(self, Packet packet=?)
+    cpdef decode_large_nogil(self, Packet packet=?)
     cpdef flush_buffers(self)
 
     # Used by hardware-accelerated decode.
