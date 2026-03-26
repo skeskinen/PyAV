@@ -392,6 +392,29 @@ class VideoFrame(Frame):
         return get_display_rotation(self)
 
     @property
+    def is_hw_frame(self):
+        """True if this frame is a hardware-accelerated frame (e.g. D3D11VA, VAAPI).
+
+        Hardware frames hold GPU texture references in data[0]/data[1] instead of
+        CPU pixel data.  Use :attr:`hw_data` to access the native texture pointers.
+        """
+        return self.ptr.hw_frames_ctx != cython.NULL
+
+    @property
+    def hw_data(self):
+        """Return (texture_ptr, array_index) for hardware frames.
+
+        For D3D11VA frames: texture_ptr is the ID3D11Texture2D*, array_index
+        is the slice within the texture array.  Both are integers.
+
+        Returns None for software frames.
+        """
+        if self.ptr.hw_frames_ctx == cython.NULL:
+            return None
+        return (int(cython.cast(cython.size_t, self.ptr.data[0])),
+                int(cython.cast(cython.size_t, self.ptr.data[1])))
+
+    @property
     def interlaced_frame(self):
         """Is this frame an interlaced or progressive?"""
 

@@ -111,6 +111,9 @@ cdef class VideoCodecContext(CodecContext):
             # need to transfer.
             return frame
 
+        if self._skip_hw_transfer:
+            return frame
+
         cdef Frame frame_sw
 
         frame_sw = self._alloc_next_frame()
@@ -121,6 +124,20 @@ cdef class VideoCodecContext(CodecContext):
         frame_sw.pts = frame.pts
 
         return frame_sw
+
+    @property
+    def skip_hw_transfer(self):
+        """When True, receive_frame returns raw hardware frames without GPU→CPU transfer.
+
+        Use this to keep decoded frames on the GPU (e.g. D3D11 textures) for
+        zero-copy display.  The returned frame's data[0]/data[1] contain the
+        native texture pointer and array index.
+        """
+        return self._skip_hw_transfer
+
+    @skip_hw_transfer.setter
+    def skip_hw_transfer(self, bint value):
+        self._skip_hw_transfer = value
 
     cdef _build_format(self):
         self._format = get_video_format(<lib.AVPixelFormat>self.ptr.pix_fmt, self.ptr.width, self.ptr.height)

@@ -1,6 +1,6 @@
 cimport libav as lib
 from libc.errno cimport EAGAIN
-from libc.stdint cimport uint8_t
+from libc.stdint cimport uint8_t, uintptr_t
 from libc.stdlib cimport free, malloc, realloc
 from libc.string cimport memcpy
 
@@ -106,6 +106,15 @@ cdef class CodecContext:
         # Set reasonable threading defaults.
         self.ptr.thread_count = 0  # use as many threads as there are CPUs.
         self.ptr.thread_type = 0x02  # thread within a frame. Does not change the API.
+
+    @property
+    def native_ptr(self):
+        """Return the underlying AVCodecContext* as an integer.
+
+        Useful for passing to native extensions that need to manipulate
+        the codec context directly (e.g. setting a shared hw device).
+        """
+        return <uintptr_t>self.ptr
 
     @property
     def flags(self):

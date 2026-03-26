@@ -2,6 +2,7 @@ import weakref
 from enum import IntEnum
 
 cimport libav as lib
+from libc.stdint cimport uintptr_t
 
 from av.codec.codec cimport Codec
 from av.dictionary cimport _Dictionary
@@ -98,7 +99,8 @@ cpdef hwdevices_available():
 
 
 cdef class HWAccel:
-    def __init__(self, device_type, device=None, allow_software_fallback=True, options=None, flags=None):
+    def __init__(self, device_type, device=None, allow_software_fallback=True, options=None, flags=None,
+                 hw_device_ctx=None):
         if isinstance(device_type, HWDeviceType):
             self._device_type = device_type
         elif isinstance(device_type, str):
@@ -114,6 +116,9 @@ cdef class HWAccel:
         self.flags = 0 if not flags else flags
         self.ptr = NULL
         self.config = None
+        # External hw device context (AVBufferRef* as int) — for sharing a device
+        # (e.g. Qt's D3D11 device) instead of creating a new one.
+        self._external_hw_device_ctx = hw_device_ctx
 
     def _initialize_hw_context(self, Codec codec not None):
         cdef HWConfig config
@@ -129,16 +134,25 @@ cdef class HWAccel:
         self.config = config
 
         cdef char *c_device = NULL
-        if self._device:
-            device_bytes = self._device.encode()
-            c_device = device_bytes
-        cdef _Dictionary c_options = Dictionary(self.options)
+        cdef _Dictionary c_options
 
-        err_check(
-            lib.av_hwdevice_ctx_create(
-                &self.ptr, config.ptr.device_type, c_device, c_options.ptr, self.flags
+        if self._external_hw_device_ctx is not None:
+            # Use externally-provided hw device context (e.g. shared D3D11 device).
+            # The value is an AVBufferRef* passed as an integer from _smc_qt.
+            self.ptr = lib.av_buffer_ref(<lib.AVBufferRef *><void *><uintptr_t>self._external_hw_device_ctx)
+            if self.ptr == NULL:
+                raise MemoryError("av_buffer_ref failed for external hw device context")
+        else:
+            if self._device:
+                device_bytes = self._device.encode()
+                c_device = device_bytes
+            c_options = Dictionary(self.options)
+
+            err_check(
+                lib.av_hwdevice_ctx_create(
+                    &self.ptr, config.ptr.device_type, c_device, c_options.ptr, self.flags
+                )
             )
-        )
 
     def create(self, Codec codec not None):
         """Create a new hardware accelerator context with the given codec"""
@@ -149,7 +163,8 @@ cdef class HWAccel:
             device_type=self._device_type,
             device=self._device,
             allow_software_fallback=self.allow_software_fallback,
-            options=self.options
+            options=self.options,
+            hw_device_ctx=self._external_hw_device_ctx,
         )
         ret._initialize_hw_context(codec)
         return ret

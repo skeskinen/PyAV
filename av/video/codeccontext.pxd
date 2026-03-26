@@ -31,3 +31,6 @@ cdef class VideoCodecContext(CodecContext):
 
     # For decoding.
     cdef VideoFrame next_frame
+
+    # When True, receive_frame returns raw hw frames without GPU→CPU transfer.
+    cdef bint _skip_hw_transfer
