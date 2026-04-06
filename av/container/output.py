@@ -260,7 +260,7 @@ class OutputContainer(Container):
         self, template: Stream, **kwargs
     ) -> Stream:
         codec_type: cython.int = template.ptr.codecpar.codec_type
-        if codec_type not in {lib.AVMEDIA_TYPE_ATTACHMENT, lib.AVMEDIA_TYPE_DATA}:
+        if codec_type not in {lib.AVMEDIA_TYPE_ATTACHMENT, lib.AVMEDIA_TYPE_DATA, lib.AVMEDIA_TYPE_SUBTITLE}:
             raise ValueError(
                 f"template stream of type {template.type} has no codec context"
             )
